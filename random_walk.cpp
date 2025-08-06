@@ -65,6 +65,32 @@ void walker_process()
     //       "Rank X: Walker finished in Y steps."
     //    b. Send an integer message to the controller (rank 0) to signal completion.
     //    c. Break the loop.
+    srand(time(NULL) + world_rank); // Unique seed for each walker
+
+    int position = 0;
+
+    for (int step = 1; step <= max_steps; ++step)
+    {
+        // Move randomly: -1 (left) or +1 (right)
+        int move = (rand() % 2 == 0) ? -1 : 1;
+        position += move;
+
+        // Check if out of domain bounds
+        if (position < -domain_size || position > domain_size)
+        {
+            std::cout << "Rank " << world_rank << ": Walker finished in " << step << " steps (out of bounds)." << std::endl;
+            
+            // Send a signal (e.g., number of steps) to controller
+            MPI_Send(&step, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+            return;
+        }
+    }
+
+    // If completed all steps within domain
+    std::cout << "Rank " << world_rank << ": Walker finished in " << max_steps << " steps (max steps reached)." << std::endl;
+
+    int dummy = max_steps;
+    MPI_Send(&dummy, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
 }
 
 void controller_process()
@@ -76,4 +102,19 @@ void controller_process()
     //    a message from any walker that finishes.
     // 4. After receiving messages from all walkers, print a final summary message.
     //    For example: "Controller: All X walkers have finished."
+
+    int num_walkers = world_size - 1;
+    int completed = 0;
+
+    std::cout << "Controller: Waiting for " << num_walkers << " walkers to finish..." << std::endl;
+
+    for (int i = 0; i < num_walkers; ++i)
+    {
+        int steps_taken;
+        MPI_Recv(&steps_taken, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        std::cout << "Controller: Received completion from a walker who took " << steps_taken << " steps." << std::endl;
+        ++completed;
+    }
+
+    std::cout << "Controller: All " << completed << " walkers have finished." << std::endl;
 }
